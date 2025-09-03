@@ -4,6 +4,8 @@ This is a standalone SAM template for Amazon Inspector export and email function
 
 ## 🏗️ Architecture
 
+<img width="1070" height="413" alt="image" src="https://github.com/user-attachments/assets/5cb074c1-bfac-4a1f-8ca8-e2908e6e940f" />
+
 The template creates:
 
 - **Export Lambda**: `export_inspector_results` - Exports Inspector findings to S3 monthly
