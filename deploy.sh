@@ -1,14 +1,13 @@
 #!/bin/bash
 
-# Inspector Export Test Environment Deployment Script
-# Usage: ./deploy.sh [environment]
-# Environment options: test (default), staging, prod
+# Inspector Monthly Report Deployment Script
+# Usage: ./deploy.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "🚀 Deploying Inspector Export..."
+echo "🚀 Deploying Inspector Monthly Report..."
 
 # Check prerequisites
 echo "🔍 Checking prerequisites..."
@@ -34,21 +33,10 @@ echo "✅ Prerequisites check passed"
 # Navigate to script directory
 cd "$SCRIPT_DIR"
 
-# Generate unique bucket name for test environment
-if [ "$ENVIRONMENT" = "test" ]; then
-    TIMESTAMP=$(date +%s)
-    BUCKET_NAME="inspector-exports-test-$TIMESTAMP"
-    echo "🪣 Using unique bucket name: $BUCKET_NAME"
-    
-    # Update samconfig.toml with unique bucket name
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed -i '' "s/S3BucketName=inspector-exports-test-unique/S3BucketName=$BUCKET_NAME/" samconfig.toml
-    else
-        # Linux
-        sed -i "s/S3BucketName=inspector-exports-test-unique/S3BucketName=$BUCKET_NAME/" samconfig.toml
-    fi
-fi
+# Generate unique bucket name to avoid conflicts
+TIMESTAMP=$(date +%s)
+BUCKET_NAME="inspector-exports-$TIMESTAMP"
+echo "🪣 Using unique bucket name: $BUCKET_NAME"
 
 # Build the application
 echo "🔨 Building SAM application..."
@@ -57,15 +45,15 @@ sam build
 # Deploy the stack
 echo "🚀 Deploying..."
 
-STACK_NAME="inspector-export-test"
+STACK_NAME="inspector-export"
 
 # Check if stack already exists
 if aws cloudformation describe-stacks --stack-name $STACK_NAME &> /dev/null; then
     echo "📋 Stack exists - updating..."
-    sam deploy
+    sam deploy --parameter-overrides S3BucketName=$BUCKET_NAME
 else
     echo "📋 First deployment - using guided mode..."
-    sam deploy --guided
+    sam deploy --guided --parameter-overrides S3BucketName=$BUCKET_NAME
 fi
 
 # Get stack outputs
@@ -106,8 +94,8 @@ echo "  S3 Bucket: $S3_BUCKET"
 echo "  KMS Key: $KMS_KEY"
 echo ""
 echo "📋 Next Steps:"
-echo "  1. Set up Mailchimp API Key (if not done already):"
-echo "     ./setup-mailchimp.sh [your-api-key]"
+echo "  1. Set up Mailchimp API Key:"
+echo "     aws ssm put-parameter --name '/mailchimp/inspectorreport/API_KEY' --value 'YOUR_API_KEY' --type 'SecureString'"
 echo ""
 echo "  2. Monitor logs:"
 echo "     sam logs -n ExportInspectorResults --stack-name $STACK_NAME --tail"
@@ -116,4 +104,4 @@ echo "  3. Test the functions:"
 echo "     sam local invoke ExportInspectorResults"
 echo "     sam local invoke SendInspectorReport --event events/s3-test-event.json"
 echo ""
-echo "✅ Inspector Export Test Environment is ready!"
+echo "✅ Inspector Monthly Report system is ready!"

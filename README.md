@@ -34,27 +34,14 @@ cd "Inspector Monethly Report"
 
 ### 2. Configure Parameters
 
-Edit the `samconfig.toml` file to customize:
+Edit the `samconfig.toml` file to customize deployment settings if needed. The deployment script will automatically generate a unique S3 bucket name, but you can also set:
 
-- `S3BucketName`: Choose a unique bucket name
-- `MailchimpToEmail`: Set the recipient email address
-- `Environment`: test/staging/prod
+- Stack name and region preferences
+- SAM deployment options
 
 ### 3. Configure Mailchimp API Key
 
-**Option A: Update samconfig.toml**
-```bash
-# Edit samconfig.toml and replace REPLACE_WITH_ACTUAL_MAILCHIMP_API_KEY with your actual API key
-nano samconfig.toml
-```
-
-**Option B: Pass as parameter during deployment**
-```bash
-# Deploy with API key parameter
-sam deploy --parameter-overrides MailchimpApiKey=YOUR_ACTUAL_MAILCHIMP_API_KEY
-```
-
-**Option C: Update SSM parameter after deployment**
+**Option A: Set SSM parameter after deployment (Recommended)**
 ```bash
 # Replace with your actual Mailchimp API key
 aws ssm put-parameter \
@@ -64,27 +51,38 @@ aws ssm put-parameter \
   --overwrite
 ```
 
-### 4. Build and Deploy
+### 4. Deploy Using the Script (Recommended)
+
+The easiest way to deploy is using the provided deployment script:
+
+```bash
+# Make the script executable
+chmod +x deploy.sh
+
+# Run the deployment script
+./deploy.sh
+```
+
+The deployment script will:
+- ✅ Check prerequisites (AWS CLI, SAM CLI, credentials)
+- 🪣 Generate a unique S3 bucket name to avoid conflicts
+- 🔨 Build the SAM application
+- 🚀 Deploy the stack (guided mode for first deployment)
+- 📊 Display all created resources and next steps
+
+### 5. Manual Deployment (Alternative)
+
+If you prefer manual deployment:
 
 ```bash
 # Build the application
 sam build
 
 # Deploy with guided prompts (first time)
-sam deploy --guided
+sam deploy --guided --parameter-overrides S3BucketName=your-unique-bucket-name
 
 # Or deploy with saved configuration
-sam deploy
-```
-
-### 5. Deploy to Different Environments
-
-```bash
-# Deploy to staging
-sam deploy --config-env staging
-
-# Deploy to production  
-sam deploy --config-env prod
+sam deploy --parameter-overrides S3BucketName=your-unique-bucket-name
 ```
 
 ## 🧪 Testing
