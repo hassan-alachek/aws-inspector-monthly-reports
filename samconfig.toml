@@ -1,0 +1,35 @@
+# SAM configuration file for Inspector Export Environment
+
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "inspector-export"
+region = "eu-central-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+fail_on_empty_changeset = false
+parameter_overrides = "S3BucketName=\"inspector-exports\""
+resolve_s3 = true
+s3_prefix = "inspector-export"
+image_repositories = []
+
+[default.package.parameters]
+s3_bucket = "sam-deployment-bucket-inspector"
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
+
+

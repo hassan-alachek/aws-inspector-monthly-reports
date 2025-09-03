@@ -1,0 +1,23 @@
+{
+  "version": "0",
+  "id": "17b0c9e1-1f4e-4a44-9f4d-1234567890ab",
+  "detail-type": "Object Created",
+  "source": "aws.s3",
+  "account": "123456789012",
+  "time": "2025-09-01T10:00:00Z",
+  "region": "eu-central-1",
+  "detail": {
+    "version": "0",
+    "bucket": {
+      "name": "inspector-exports-bucket"
+    },
+    "object": {
+      "key": "inspector-reports/2025-09/inspector-report-2024-01-15.csv",
+      "size": 1024,
+      "etag": "d41d8cd98f00b204e9800998ecf8427e",
+      "sequencer": "00637B87B7D0F3F3F3"
+    },
+    "request-id": "C3D13FE58DE4C24C",
+    "requester": "123456789012"
+  }
+}

@@ -1,0 +1,2 @@
+boto3==1.40.21
+mailchimp_transactional==1.0.56

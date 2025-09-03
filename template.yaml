@@ -1,0 +1,250 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Inspector Export Environment
+  
+  SAM Template for testing Amazon Inspector export and email functionality
+  Contains: Export Lambda, Send Email Lambda, KMS Key, and S3 Bucket
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Default: inspector-exports-bucket
+    Description: S3 bucket name for Inspector exports
+
+Globals:
+  Function:
+    Timeout: 300
+    Runtime: python3.13
+    LoggingConfig:
+      LogFormat: JSON
+    Architectures:
+      - x86_64
+
+Resources:
+  # S3 Bucket for Inspector exports
+  InspectorExportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref InspectorExportKMSKey
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+
+  # S3 Bucket Policy to allow Inspector2 to write reports
+  InspectorExportsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref InspectorExportsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowInspector2ToWriteReports
+            Effect: Allow
+            Principal:
+              Service: inspector2.amazonaws.com
+            Action:
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource: !Sub 'arn:aws:s3:::${S3BucketName}/*'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+              StringLike:
+                'aws:SourceArn': !Sub 'arn:aws:inspector2:${AWS::Region}:${AWS::AccountId}:*'
+
+  # KMS Key for Inspector exports
+  InspectorExportKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for encrypting Inspector findings exports
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow S3 service to use the key for bucket encryption
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+                'kms:ViaService': !Sub 's3.${AWS::Region}.amazonaws.com'
+          - Sid: Allow Inspector service to use the key for report encryption
+            Effect: Allow
+            Principal:
+              Service: inspector2.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:aws:inspector2:${AWS::Region}:${AWS::AccountId}:report/*'
+          - Sid: Allow Lambda execution roles to decrypt S3 objects
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+
+  # KMS Key Alias
+  InspectorExportKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: 'alias/inspector-export-key'
+      TargetKeyId: !Ref InspectorExportKMSKey
+
+  # Lambda function to export Inspector results
+  ExportInspectorResults:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: 'export_inspector_results'
+      Description: Export Amazon Inspector results as CSV and upload to S3 bucket monthly
+      PackageType: Zip
+      Handler: export_inspector_results.export_inspector_results
+      CodeUri: lambdas/export_inspector_results/
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - inspector2:CreateFindingsReport
+                - sts:GetCallerIdentity
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: '*'
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref InspectorExportsBucket
+          KMS_KEY_ARN: !GetAtt InspectorExportKMSKey.Arn
+      Events:
+        MonthlySchedule:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: 'cron(0 2 1 * ? *)'
+            Name: 'ExportInspectorResultsCron'
+            Description: Monthly cronjob to export Inspector results as CSV
+
+
+
+  # Lambda function to send Inspector reports via email
+  SendInspectorReport:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: 'send_inspector_report'
+      Description: Send Inspector Report via email with CSV attachment
+      PackageType: Zip
+      Handler: send_inspector_report.send_inspector_report
+      CodeUri: lambdas/send_inspector_report/
+      Timeout: 60
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref S3BucketName
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+                - kms:DescribeKey
+              Resource: !GetAtt InspectorExportKMSKey.Arn
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+              Resource: 
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/mailchimp/inspectorreport/*'
+      Environment:
+        Variables:
+          MAILCHIMP_FROM_EMAIL_PARAM: "security@yourdomain.com"
+          MAILCHIMP_FROM_NAME_PARAM: "Your Name"
+          MAILCHIMP_TO_EMAIL: "your@email.com,your1@email.com"
+          MAILCHIMP_CC_EMAIL: ""
+          SSM_PARAMETER_PREFIX: '/mailchimp/inspectorreport'
+      Events:
+        S3ObjectCreated:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - "aws.s3"
+              detail-type:
+                - "Object Created"
+              detail:
+                bucket:
+                  name:
+                    - !Ref S3BucketName
+
+
+
+
+
+Outputs:
+  ExportInspectorResultsFunction:
+    Description: "Export Inspector Results Lambda Function ARN"
+    Value: !GetAtt ExportInspectorResults.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ExportInspectorResultsFunction"
+
+  SendInspectorReportFunction:
+    Description: "Send Inspector Report Lambda Function ARN"
+    Value: !GetAtt SendInspectorReport.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-SendInspectorReportFunction"
+
+  S3Bucket:
+    Description: "S3 Bucket for Inspector exports"
+    Value: !Ref InspectorExportsBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-S3Bucket"
+
+  KMSKey:
+    Description: "KMS Key for Inspector encryption"
+    Value: !GetAtt InspectorExportKMSKey.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-KMSKey"
+
+  KMSKeyAlias:
+    Description: "KMS Key Alias"
+    Value: !Ref InspectorExportKMSKeyAlias
+    Export:
+      Name: !Sub "${AWS::StackName}-KMSKeyAlias"
