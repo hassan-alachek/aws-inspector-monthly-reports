@@ -139,8 +139,17 @@ Resources:
             - Effect: Allow
               Action:
                 - inspector2:CreateFindingsReport
+                - inspector2:GetFindingsReportStatus
+                - events:PutEvents
                 - sts:GetCallerIdentity
               Resource: '*'
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+                - s3:GetObject
+              Resource:
+                - !Sub 'arn:aws:s3:::${S3BucketName}'
+                - !Sub 'arn:aws:s3:::${S3BucketName}/*'
             - Effect: Allow
               Action:
                 - logs:CreateLogGroup
@@ -200,19 +209,18 @@ Resources:
           MAILCHIMP_TO_EMAIL: "your@email.com,your1@email.com"
           MAILCHIMP_CC_EMAIL: ""
           SSM_PARAMETER_PREFIX: '/mailchimp/inspectorreport'
-      Events:
-        S3ObjectCreated:
+     Events:
+        InspectorReportsReady:
           Type: EventBridgeRule
           Properties:
             Pattern:
               source:
-                - "aws.s3"
+                - "event.inspector.export"
               detail-type:
-                - "Object Created"
+                - "Inspector Reports Ready"
               detail:
-                bucket:
-                  name:
-                    - !Ref S3BucketName
+                environment:
+                  - "management"
 
 
 
