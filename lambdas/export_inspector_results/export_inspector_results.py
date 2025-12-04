@@ -501,7 +501,7 @@ def send_inspector_reports_ready_event(eventbridge_client, completed_files, buck
         response = eventbridge_client.put_events(
             Entries=[
                 {
-                    'Source': 'nbk.inspector.export',
+                    'Source': 'event.inspector.export',
                     'DetailType': 'Inspector Reports Ready',
                     'Detail': json.dumps(event_detail),
                     'Resources': [
